@@ -168,12 +168,20 @@
         <h2 style="font-size:1.2rem;font-weight:600;color:#1f2937;">Your Optimized Resume</h2>
         <span style="background:#dcfce7;color:#16a34a;font-size:0.75rem;font-weight:600;padding:0.25rem 0.75rem;border-radius:9999px;">✓ AI Optimized</span>
       </div>
-      <div style="position:relative;">
-        <div id="resume-preview" style="border:1px solid #f3f4f6;border-radius:0.75rem;padding:1.5rem;font-size:0.8rem;color:#374151;line-height:1.7;white-space:pre-wrap;max-height:18rem;overflow:hidden;background:#fafafa;filter:blur(4px);user-select:none;"></div>
-        <div style="position:absolute;inset:0;background:rgba(255,255,255,0.7);border-radius:0.75rem;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-          <div style="font-size:2.5rem;margin-bottom:0.5rem;">🔒</div>
-          <p style="font-weight:600;color:#1f2937;">Unlock to Download</p>
-          <p style="font-size:0.8rem;color:#6b7280;">Pay once · Get Word file instantly</p>
+      <div style="position:relative;border:1px solid #f3f4f6;border-radius:0.75rem;overflow:hidden;background:#fafafa;">
+        <!-- Clear preview: first 3 lines -->
+        <div id="resume-preview-clear" style="padding:1.5rem 1.5rem 0;font-size:0.85rem;color:#374151;line-height:1.8;white-space:pre-wrap;font-family:Georgia,serif;"></div>
+        <!-- Blurred rest -->
+        <div style="position:relative;">
+          <div id="resume-preview-blur" style="padding:0 1.5rem 1.5rem;font-size:0.85rem;color:#374151;line-height:1.8;white-space:pre-wrap;font-family:Georgia,serif;filter:blur(4px);user-select:none;max-height:12rem;overflow:hidden;"></div>
+          <!-- Gradient fade + lock overlay -->
+          <div style="position:absolute;inset:0;background:linear-gradient(to bottom, rgba(250,250,250,0) 0%, rgba(250,250,250,0.6) 40%, rgba(250,250,250,0.97) 75%);"></div>
+          <div style="position:absolute;bottom:0;left:0;right:0;padding:1.5rem;text-align:center;">
+            <div style="display:inline-flex;align-items:center;gap:0.5rem;background:white;border:1.5px solid #e5e7eb;border-radius:9999px;padding:0.5rem 1.25rem;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+              <span style="font-size:1rem;">🔒</span>
+              <span style="font-size:0.85rem;font-weight:600;color:#374151;">Full resume unlocks after payment</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -338,7 +346,12 @@ async function startRewrite(){
     const data=await res.json();
     if(!data.success)throw new Error(data.error||'Rewrite failed');
     state.rewrittenResume=data.rewrittenResume;
-    document.getElementById('resume-preview').textContent=data.rewrittenResume;
+    // Split into preview (first 3 lines clear) + rest (blurred)
+    const lines = data.rewrittenResume.split('\n');
+    const clearLines = lines.slice(0, 4).join('\n');
+    const blurLines = lines.slice(4).join('\n');
+    document.getElementById('resume-preview-clear').textContent = clearLines;
+    document.getElementById('resume-preview-blur').textContent = blurLines;
     showSection('preview');setStep(3);
     initPayPal();
   }catch(e){alert('Rewrite failed: '+e.message);showSection('results');setStep(2);}
