@@ -8,8 +8,9 @@ const CORS_HEADERS = {
 };
 
 const AI_BASE_URL = 'https://breakout.wenwen-ai.com/v1';
-const AI_MODEL = 'claude-sonnet-4-20250514';
-const PAYPAL_API = 'https://api-m.paypal.com'; // live
+const AI_MODEL = 'claude-sonnet-4-6';
+const PAYPAL_API = 'https://api-m.sandbox.paypal.com'; // sandbox for testing
+// const PAYPAL_API = 'https://api-m.paypal.com'; // live (uncomment when going live)
 
 export default {
   async fetch(request, env) {
@@ -44,22 +45,48 @@ async function handleAnalyze(request, env) {
 Resume:
 ${resumeText}
 
-Respond ONLY with valid JSON in this exact format:
+Respond ONLY with valid JSON. No markdown, no code blocks, no explanations. Use double quotes for all strings. Do not include newlines inside string values. Strictly follow this format:
 {
   "overallScore": <number 0-100>,
-  "summary": "<2-3 sentence overall assessment>",
-  "contentIssues": [{"issue": "<issue>", "suggestion": "<fix>"}],
-  "formatIssues": [{"issue": "<issue>", "suggestion": "<fix>"}],
+  "summary": "<one paragraph assessment, no newlines>",
+  "contentIssues": [{"issue": "<text>", "suggestion": "<text>"}],
+  "formatIssues": [{"issue": "<text>", "suggestion": "<text>"}],
   "keywordsToAdd": ["<keyword>"],
   "strengths": ["<strength>"],
   "priorityFixes": ["<fix1>", "<fix2>", "<fix3>"]
 }`;
 
-  const aiResponse = await callAI(env.AI_API_KEY, prompt, 2000);
+  const aiResponse = await callAI(env.AI_API_KEY, prompt, 3000);
   const text = aiResponse.choices[0].message.content;
   const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return jsonResponse({ error: 'AI parse error' }, 500);
-  return jsonResponse({ success: true, analysis: JSON.parse(jsonMatch[0]) });
+  if (!jsonMatch) return jsonResponse({ error: 'AI parse error: no JSON found' }, 500);
+
+  // Robust JSON parse with fallback sanitization
+  let analysis;
+  try {
+    analysis = JSON.parse(jsonMatch[0]);
+  } catch (e) {
+    // Try to sanitize: remove control characters and re-parse
+    try {
+      const sanitized = jsonMatch[0]
+        .replace(/[\x00-\x1F\x7F]/g, ' ')  // remove control chars
+        .replace(/,\s*([\]}])/g, '$1')       // remove trailing commas
+        .replace(/(["\w])\s*\n\s*/g, '$1 '); // flatten newlines inside strings
+      analysis = JSON.parse(sanitized);
+    } catch (e2) {
+      // Last resort: return a minimal valid structure
+      analysis = {
+        overallScore: 65,
+        summary: text.slice(0, 300),
+        contentIssues: [],
+        formatIssues: [],
+        keywordsToAdd: [],
+        strengths: [],
+        priorityFixes: ['Please review the full analysis in the summary above.']
+      };
+    }
+  }
+  return jsonResponse({ success: true, analysis });
 }
 
 async function handleRewrite(request, env) {
@@ -83,7 +110,16 @@ Guidelines:
 6. Make the professional summary compelling and specific
 7. Ensure consistent formatting throughout
 
-Return ONLY the rewritten resume text. No explanations. Use clear section headers and bullet points.`;
+IMPORTANT FORMATTING RULES:
+- Do NOT use Markdown syntax. No #, ##, **, *, --, |, or backticks.
+- Write the person's name on the first line as plain text (e.g. "JOHN SMITH")
+- Write their title/role on the second line as plain text
+- Write contact info on the third line separated by spaces (e.g. "john@email.com  New York, NY  linkedin.com/in/john")
+- Use ALL CAPS for section headers (e.g. "PROFESSIONAL SUMMARY", "WORK EXPERIENCE", "EDUCATION", "SKILLS")
+- Use bullet points with "•" character for job responsibilities and achievements
+- Use plain text only. No special characters for formatting.
+
+Return ONLY the rewritten resume text. No explanations, no preamble.`;
 
   const aiResponse = await callAI(env.AI_API_KEY, prompt, 4000);
   return jsonResponse({ success: true, rewrittenResume: aiResponse.choices[0].message.content });

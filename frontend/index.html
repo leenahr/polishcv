@@ -388,7 +388,35 @@ function initPayPal(){
 // ── DOCX Template Builder ────────────────────────────────────────────────────
 function xmlEsc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
-function buildDocXml(text){
+// Strip Markdown syntax and normalize text for DOCX building
+function cleanMarkdown(text){
+  return text
+    .split('\n')
+    .map(line => {
+      // Convert ## Section Header → keep as is (will be detected by SEC regex)
+      // but strip the leading # symbols
+      line = line.replace(/^#{1,6}\s+/, '');
+      // Convert --- or *** (hr) lines to empty (they'll be filtered)
+      if(/^[-*_]{3,}\s*$/.test(line)) return '';
+      // Strip bold/italic markers: **text** or *text* or __text__
+      line = line.replace(/\*\*([^*]+)\*\*/g, '$1');
+      line = line.replace(/\*([^*]+)\*/g, '$1');
+      line = line.replace(/__([^_]+)__/g, '$1');
+      line = line.replace(/_([^_]+)_/g, '$1');
+      // Convert markdown bullets "- item" or "* item" to "• item"
+      line = line.replace(/^[\-\*]\s+/, '• ');
+      // Strip any remaining pipe characters used as separators
+      // but keep lines with meaningful content either side
+      if(/^\s*\|\s*$/.test(line)) return '';
+      // Strip leading/trailing pipes if it looks like a table separator
+      line = line.replace(/^\s*\|\s*/, '').replace(/\s*\|\s*$/, '');
+      return line;
+    })
+    .join('\n');
+}
+
+function buildDocXml(rawText){
+  const text = cleanMarkdown(rawText);
   const NAVY='1a1a2e', BLUE='2563eb', BODY='374151', LIGHT='6b7280';
   const lines=text.split('\n').map(l=>l.trim()).filter(l=>l);
   const SEC=/^(SUMMARY|OBJECTIVE|EXPERIENCE|WORK|EDUCATION|SKILLS|PROJECTS|CERTIF|AWARDS|LANGUAGE|VOLUNTEER|PUBLICATIONS|REFERENCES)/i;
