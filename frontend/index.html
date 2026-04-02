@@ -168,8 +168,31 @@
         <h2 style="font-size:1.2rem;font-weight:600;color:#1f2937;">Your Optimized Resume</h2>
         <span style="background:#dcfce7;color:#16a34a;font-size:0.75rem;font-weight:600;padding:0.25rem 0.75rem;border-radius:9999px;">✓ AI Optimized</span>
       </div>
+
+      <!-- Template selector -->
+      <div style="margin-bottom:1.25rem;">
+        <p style="font-size:0.8rem;font-weight:500;color:#6b7280;margin-bottom:0.625rem;">Choose your template style:</p>
+        <div style="display:flex;gap:0.625rem;flex-wrap:wrap;">
+          <button onclick="selectTemplate('classic')" id="tpl-classic"
+            style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 1rem;border-radius:0.625rem;border:2px solid #6366f1;background:#eef2ff;color:#4338ca;font-size:0.8rem;font-weight:600;cursor:pointer;font-family:inherit;">
+            <span style="width:12px;height:12px;border-radius:2px;background:#1B3A6B;display:inline-block;"></span>
+            Classic Clean
+          </button>
+          <button onclick="selectTemplate('bold')" id="tpl-bold"
+            style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 1rem;border-radius:0.625rem;border:2px solid #e5e7eb;background:white;color:#374151;font-size:0.8rem;font-weight:600;cursor:pointer;font-family:inherit;">
+            <span style="width:12px;height:12px;border-radius:2px;background:#1e40af;display:inline-block;"></span>
+            Corporate Blue
+          </button>
+          <button onclick="selectTemplate('modern')" id="tpl-modern"
+            style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 1rem;border-radius:0.625rem;border:2px solid #e5e7eb;background:white;color:#374151;font-size:0.8rem;font-weight:600;cursor:pointer;font-family:inherit;">
+            <span style="width:12px;height:12px;border-radius:2px;background:#0f766e;display:inline-block;"></span>
+            Modern Teal
+          </button>
+        </div>
+      </div>
+
       <div style="position:relative;border:1px solid #f3f4f6;border-radius:0.75rem;overflow:hidden;background:#fafafa;">
-        <!-- Clear preview: first 3 lines -->
+        <!-- Clear preview: first 4 lines -->
         <div id="resume-preview-clear" style="padding:1.5rem 1.5rem 0;font-size:0.85rem;color:#374151;line-height:1.8;white-space:pre-wrap;font-family:Georgia,serif;"></div>
         <!-- Blurred rest -->
         <div style="position:relative;">
@@ -386,8 +409,43 @@ async function startRewrite(){
   }catch(e){alert('Rewrite failed: '+e.message);showSection('results');setStep(2);}
 }
 
-function initPayPal(){
-  document.getElementById('paypal-button-container').innerHTML='';
+// ── Template selection ────────────────────────────────────────────────────────
+let currentTemplate = 'classic';
+
+function selectTemplate(tpl){
+  currentTemplate = tpl;
+  // Update button styles
+  ['classic','bold','modern'].forEach(t => {
+    const btn = document.getElementById('tpl-'+t);
+    if(t === tpl){
+      btn.style.border = '2px solid #6366f1';
+      btn.style.background = '#eef2ff';
+      btn.style.color = '#4338ca';
+    } else {
+      btn.style.border = '2px solid #e5e7eb';
+      btn.style.background = 'white';
+      btn.style.color = '#374151';
+    }
+  });
+  // Update preview text style to hint at the template
+  const clearEl = document.getElementById('resume-preview-clear');
+  const blurEl  = document.getElementById('resume-preview-blur');
+  if(tpl === 'classic'){
+    clearEl.style.fontFamily = 'Georgia, serif';
+    clearEl.style.color = '#1B3A6B';
+    blurEl.style.fontFamily  = 'Georgia, serif';
+  } else if(tpl === 'bold'){
+    clearEl.style.fontFamily = 'Arial, sans-serif';
+    clearEl.style.color = '#1e40af';
+    blurEl.style.fontFamily  = 'Arial, sans-serif';
+  } else {
+    clearEl.style.fontFamily = 'Helvetica, sans-serif';
+    clearEl.style.color = '#0f766e';
+    blurEl.style.fontFamily  = 'Helvetica, sans-serif';
+  }
+}
+
+function initPayPal(){  document.getElementById('paypal-button-container').innerHTML='';
   paypal.Buttons({
     createOrder(data,actions){
       return actions.order.create({
@@ -564,10 +622,16 @@ async function downloadResume(){
   if(!window.JSZip){
     await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';s.onload=res;s.onerror=rej;document.head.appendChild(s);});
   }
+  // Pick the right template
+  let docXml;
+  if(currentTemplate === 'bold')        docXml = buildDocXmlBold(text);
+  else if(currentTemplate === 'modern') docXml = buildDocXmlModern(text);
+  else                                   docXml = buildDocXml(text);
+
   const zip=new JSZip();
   zip.file('[Content_Types].xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`);
   zip.file('_rels/.rels',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
-  zip.file('word/document.xml',buildDocXml(text));
+  zip.file('word/document.xml', docXml);
   zip.file('word/_rels/document.xml.rels',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`);
   const blob=await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
   const url=URL.createObjectURL(blob);
@@ -582,7 +646,82 @@ function startOver(){
   document.getElementById('upload-done').style.display='none';
   document.getElementById('job-description').value='';
   document.getElementById('btn-analyze').disabled=true;
+  currentTemplate = 'classic';
   showSection('upload');setStep(1);
+}
+
+// ── Template 2: Corporate Blue ────────────────────────────────────────────────
+// Navy header bar with white text, blue section headers, clean lines
+function buildDocXmlBold(rawText){
+  const text = cleanMarkdown(rawText);
+  const NAVY='1e3a5f', BLUE='1e40af', LTBLUE='dbeafe', DARK='1f2937', MID='4b5563', WHITE='FFFFFF';
+  const FONT=`<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>`;
+  const SEC=/^(PROFESSIONAL\s+SUMMARY|SUMMARY|OBJECTIVE|WORK\s+EXPERIENCE|EXPERIENCE|EDUCATION|SKILLS|CORE\s+COMPETENCIES|COMPETENCIES|PROJECTS|CERTIF|AWARDS|LANGUAGES?|VOLUNTEER|PUBLICATIONS|REFERENCES)/i;
+  const lines=text.split('\n').map(l=>l.trim()).filter(l=>l);
+  let headerLines=[],sections=[],cur=null,headerDone=false;
+  for(const line of lines){
+    if(!headerDone&&!SEC.test(line)){headerLines.push(line);}
+    else{headerDone=true;if(SEC.test(line)){if(cur)sections.push(cur);cur={title:line,items:[]};}else if(cur){cur.items.push(line);}}
+  }
+  if(cur)sections.push(cur);
+  let body='';
+  // Full-width navy name bar
+  if(headerLines[0]) body+=`<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="0"/><w:shd w:val="clear" w:color="auto" w:fill="${NAVY}"/></w:pPr><w:r><w:rPr><w:b/>${FONT}<w:sz w:val="52"/><w:szCs w:val="52"/><w:color w:val="${WHITE}"/><w:spacing w:val="60"/></w:rPr><w:t xml:space="preserve">  ${xmlEsc(headerLines[0])}  </w:t></w:r></w:p>`;
+  if(headerLines[1]) body+=`<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="0"/><w:shd w:val="clear" w:color="auto" w:fill="${BLUE}"/></w:pPr><w:r><w:rPr>${FONT}<w:sz w:val="22"/><w:szCs w:val="22"/><w:color w:val="${WHITE}"/></w:rPr><w:t xml:space="preserve">  ${xmlEsc(headerLines[1])}  </w:t></w:r></w:p>`;
+  const cp=headerLines.slice(2).filter(l=>l);
+  if(cp.length) body+=`<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="280"/><w:shd w:val="clear" w:color="auto" w:fill="${LTBLUE}"/><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="2" w:color="${BLUE}"/></w:pBdr></w:pPr><w:r><w:rPr>${FONT}<w:sz w:val="18"/><w:szCs w:val="18"/><w:color w:val="${NAVY}"/></w:rPr><w:t xml:space="preserve">  ${xmlEsc(cp.join('   |   '))}  </w:t></w:r></w:p>`;
+  for(const sec of sections){
+    body+=`<w:p><w:pPr><w:spacing w:before="220" w:after="0"/><w:pBdr><w:bottom w:val="single" w:sz="12" w:space="4" w:color="${BLUE}"/></w:pBdr></w:pPr><w:r><w:rPr><w:b/>${FONT}<w:sz w:val="22"/><w:szCs w:val="22"/><w:color w:val="${BLUE}"/><w:caps/></w:rPr><w:t>${xmlEsc(sec.title)}</w:t></w:r></w:p>`;
+    body+=`<w:p><w:pPr><w:spacing w:before="0" w:after="80"/></w:pPr></w:p>`;
+    for(const item of sec.items){
+      const r=item.trim();
+      if(/^[•\-]/.test(r)){const t=r.replace(/^[•\-]\s*/,'');body+=`<w:p><w:pPr><w:ind w:left="400" w:hanging="220"/><w:spacing w:after="40"/></w:pPr><w:r><w:rPr>${FONT}<w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${DARK}"/></w:rPr><w:t xml:space="preserve">•  ${xmlEsc(t)}</w:t></w:r></w:p>`;continue;}
+      const isDate=/\d{4}|Present|Remote|Hybrid/i.test(r)&&r.length<60;
+      const isJob=!isDate&&r.length<90&&/[A-Z]/.test(r[0])&&/[—–\-|,@]/.test(r);
+      if(isJob) body+=`<w:p><w:pPr><w:spacing w:before="120" w:after="40"/></w:pPr><w:r><w:rPr><w:b/>${FONT}<w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${NAVY}"/></w:rPr><w:t>${xmlEsc(r)}</w:t></w:r></w:p>`;
+      else if(isDate) body+=`<w:p><w:pPr><w:spacing w:before="0" w:after="60"/></w:pPr><w:r><w:rPr><w:i/>${FONT}<w:sz w:val="18"/><w:szCs w:val="18"/><w:color w:val="${MID}"/></w:rPr><w:t>${xmlEsc(r)}</w:t></w:r></w:p>`;
+      else body+=`<w:p><w:pPr><w:spacing w:after="60"/></w:pPr><w:r><w:rPr>${FONT}<w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${DARK}"/></w:rPr><w:t>${xmlEsc(r)}</w:t></w:r></w:p>`;
+    }
+  }
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>${body}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="0" w:right="1080" w:bottom="1080" w:left="1080" w:header="0" w:footer="0"/></w:sectPr></w:body></w:document>`;
+}
+
+// ── Template 3: Modern Teal ───────────────────────────────────────────────────
+// Left teal accent bar on section headers, clean white background, contemporary feel
+function buildDocXmlModern(rawText){
+  const text = cleanMarkdown(rawText);
+  const TEAL='0f766e', LTEAL='ccfbf1', DARK='1c1c1c', MID='6b7280', WHITE='FFFFFF', RULE='d1d5db';
+  const FONT=`<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>`;
+  const SEC=/^(PROFESSIONAL\s+SUMMARY|SUMMARY|OBJECTIVE|WORK\s+EXPERIENCE|EXPERIENCE|EDUCATION|SKILLS|CORE\s+COMPETENCIES|COMPETENCIES|PROJECTS|CERTIF|AWARDS|LANGUAGES?|VOLUNTEER|PUBLICATIONS|REFERENCES)/i;
+  const lines=text.split('\n').map(l=>l.trim()).filter(l=>l);
+  let headerLines=[],sections=[],cur=null,headerDone=false;
+  for(const line of lines){
+    if(!headerDone&&!SEC.test(line)){headerLines.push(line);}
+    else{headerDone=true;if(SEC.test(line)){if(cur)sections.push(cur);cur={title:line,items:[]};}else if(cur){cur.items.push(line);}}
+  }
+  if(cur)sections.push(cur);
+  let body='';
+  // Name: large, teal colour, left-aligned
+  if(headerLines[0]) body+=`<w:p><w:pPr><w:spacing w:before="160" w:after="40"/></w:pPr><w:r><w:rPr><w:b/>${FONT}<w:sz w:val="52"/><w:szCs w:val="52"/><w:color w:val="${TEAL}"/><w:spacing w:val="40"/></w:rPr><w:t>${xmlEsc(headerLines[0])}</w:t></w:r></w:p>`;
+  if(headerLines[1]) body+=`<w:p><w:pPr><w:spacing w:before="0" w:after="60"/></w:pPr><w:r><w:rPr>${FONT}<w:sz w:val="24"/><w:szCs w:val="24"/><w:color w:val="${MID}"/></w:rPr><w:t>${xmlEsc(headerLines[1])}</w:t></w:r></w:p>`;
+  const cp=headerLines.slice(2).filter(l=>l);
+  if(cp.length) body+=`<w:p><w:pPr><w:spacing w:before="0" w:after="0"/><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="6" w:color="${RULE}"/></w:pBdr></w:pPr><w:r><w:rPr>${FONT}<w:sz w:val="18"/><w:szCs w:val="18"/><w:color w:val="${MID}"/></w:rPr><w:t>${xmlEsc(cp.join('   |   '))}</w:t></w:r></w:p>`;
+  body+=`<w:p><w:pPr><w:spacing w:before="0" w:after="160"/></w:pPr></w:p>`;
+  for(const sec of sections){
+    // Section header with left teal bar and light teal background
+    body+=`<w:p><w:pPr><w:spacing w:before="180" w:after="0"/><w:shd w:val="clear" w:color="auto" w:fill="${LTEAL}"/><w:pBdr><w:left w:val="single" w:sz="32" w:space="6" w:color="${TEAL}"/></w:pBdr><w:ind w:left="180"/></w:pPr><w:r><w:rPr><w:b/>${FONT}<w:sz w:val="22"/><w:szCs w:val="22"/><w:color w:val="${TEAL}"/><w:caps/></w:rPr><w:t>${xmlEsc(sec.title)}</w:t></w:r></w:p>`;
+    body+=`<w:p><w:pPr><w:spacing w:before="0" w:after="100"/></w:pPr></w:p>`;
+    for(const item of sec.items){
+      const r=item.trim();
+      if(/^[•\-]/.test(r)){const t=r.replace(/^[•\-]\s*/,'');body+=`<w:p><w:pPr><w:ind w:left="400" w:hanging="220"/><w:spacing w:after="40"/></w:pPr><w:r><w:rPr>${FONT}<w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${DARK}"/></w:rPr><w:t xml:space="preserve">•  ${xmlEsc(t)}</w:t></w:r></w:p>`;continue;}
+      const isDate=/\d{4}|Present|Remote|Hybrid/i.test(r)&&r.length<60;
+      const isJob=!isDate&&r.length<90&&/[A-Z]/.test(r[0])&&/[—–\-|,@]/.test(r);
+      if(isJob) body+=`<w:p><w:pPr><w:spacing w:before="120" w:after="40"/></w:pPr><w:r><w:rPr><w:b/>${FONT}<w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${TEAL}"/></w:rPr><w:t>${xmlEsc(r)}</w:t></w:r></w:p>`;
+      else if(isDate) body+=`<w:p><w:pPr><w:spacing w:before="0" w:after="60"/></w:pPr><w:r><w:rPr><w:i/>${FONT}<w:sz w:val="18"/><w:szCs w:val="18"/><w:color w:val="${MID}"/></w:rPr><w:t>${xmlEsc(r)}</w:t></w:r></w:p>`;
+      else body+=`<w:p><w:pPr><w:spacing w:after="60"/></w:pPr><w:r><w:rPr>${FONT}<w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${DARK}"/></w:rPr><w:t>${xmlEsc(r)}</w:t></w:r></w:p>`;
+    }
+  }
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>${body}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1080" w:right="1260" w:bottom="1080" w:left="1260" w:header="0" w:footer="0"/></w:sectPr></w:body></w:document>`;
 }
 </script>
 </body>
