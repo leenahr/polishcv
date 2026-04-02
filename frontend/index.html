@@ -414,9 +414,9 @@ function initPayPal(){
 
 
 
-// ── DOCX Template Builder (Modern Professional Blue) ─────────────────────────
-// 3 colours: NAVY #1B3A6B (name bar/headers), BLUE #2E6DB4 (accent/title bar), DARK #2D2D2D (body)
-// Font: Calibri throughout. Single-column. ATS-friendly.
+// ── DOCX Template Builder (Clean Icon-Style) ─────────────────────────────────
+// Inspired by: icon + section title + light grey divider, no color fills
+// 3 colours only: NAVY #1B3A6B (name), CHARCOAL #2D2D2D (body), MID #707070 (dates/contact)
 
 function xmlEsc(s){
   return String(s)
@@ -445,13 +445,12 @@ function cleanMarkdown(text){
 function buildDocXml(rawText){
   const text = cleanMarkdown(rawText);
 
-  const NAVY  = '1B3A6B';
-  const BLUE  = '2E6DB4';
-  const LTBG  = 'EBF0F8';
-  const DARK  = '2D2D2D';
-  const MID   = '5A6A7A';
-  const WHITE = 'FFFFFF';
-  const FONT  = `<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>`;
+  const NAVY    = '1B3A6B';   // name
+  const CHARCOAL= '2D2D2D';   // body text, bullets
+  const SECCOLOR= '2D3E50';   // section header text (dark blue-grey)
+  const MID     = '707070';   // dates, contact info
+  const DIVIDER = 'CCCCCC';   // thin grey divider lines
+  const FONT    = `<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>`;
 
   const SEC = /^(PROFESSIONAL\s+SUMMARY|SUMMARY|OBJECTIVE|WORK\s+EXPERIENCE|EXPERIENCE|EDUCATION|SKILLS|CORE\s+COMPETENCIES|COMPETENCIES|PROJECTS|CERTIF|AWARDS|LANGUAGES?|VOLUNTEER|PUBLICATIONS|REFERENCES)/i;
 
@@ -469,58 +468,58 @@ function buildDocXml(rawText){
 
   let body = '';
 
-  // Name bar — navy fill, white bold text, centred
+  // ── Header: Name left-aligned, large navy bold ────────────────────────────
   if(headerLines[0]){
-    body += `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="120" w:after="0"/>
-      <w:shd w:val="clear" w:color="auto" w:fill="${NAVY}"/>
-      <w:pBdr><w:top w:val="single" w:sz="4" w:space="0" w:color="${NAVY}"/></w:pBdr>
+    body += `<w:p><w:pPr>
+      <w:spacing w:before="160" w:after="60"/>
     </w:pPr>
-    <w:r><w:rPr><w:b/>${FONT}<w:sz w:val="48"/><w:szCs w:val="48"/><w:color w:val="${WHITE}"/><w:spacing w:val="60"/></w:rPr>
-    <w:t xml:space="preserve">  ${xmlEsc(headerLines[0])}  </w:t></w:r></w:p>`;
+    <w:r><w:rPr><w:b/>${FONT}<w:sz w:val="52"/><w:szCs w:val="52"/><w:color w:val="${NAVY}"/><w:spacing w:val="40"/></w:rPr>
+    <w:t>${xmlEsc(headerLines[0])}</w:t></w:r></w:p>`;
   }
 
-  // Title bar — blue fill, white text
+  // Professional title — medium, dark grey, not bold
   if(headerLines[1]){
-    body += `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="0"/>
-      <w:shd w:val="clear" w:color="auto" w:fill="${BLUE}"/>
-    </w:pPr>
-    <w:r><w:rPr>${FONT}<w:sz w:val="22"/><w:szCs w:val="22"/><w:color w:val="${WHITE}"/></w:rPr>
-    <w:t xml:space="preserve">  ${xmlEsc(headerLines[1])}  </w:t></w:r></w:p>`;
+    body += `<w:p><w:pPr><w:spacing w:before="0" w:after="60"/></w:pPr>
+    <w:r><w:rPr>${FONT}<w:sz w:val="24"/><w:szCs w:val="24"/><w:color w:val="${MID}"/></w:rPr>
+    <w:t>${xmlEsc(headerLines[1])}</w:t></w:r></w:p>`;
   }
 
-  // Contact bar — light blue fill, navy text
+  // Contact info — small, mid-grey, joined with  |
   const contactParts = headerLines.slice(2).filter(l => l);
   if(contactParts.length){
-    body += `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="280"/>
-      <w:shd w:val="clear" w:color="auto" w:fill="${LTBG}"/>
-      <w:pBdr><w:bottom w:val="single" w:sz="6" w:space="2" w:color="${BLUE}"/></w:pBdr>
+    body += `<w:p><w:pPr>
+      <w:spacing w:before="0" w:after="0"/>
+      <w:pBdr><w:bottom w:val="single" w:sz="4" w:space="6" w:color="${DIVIDER}"/></w:pBdr>
     </w:pPr>
-    <w:r><w:rPr>${FONT}<w:sz w:val="18"/><w:szCs w:val="18"/><w:color w:val="${NAVY}"/></w:rPr>
-    <w:t xml:space="preserve">  ${xmlEsc(contactParts.join('   |   '))}  </w:t></w:r></w:p>`;
+    <w:r><w:rPr>${FONT}<w:sz w:val="18"/><w:szCs w:val="18"/><w:color w:val="${MID}"/></w:rPr>
+    <w:t>${xmlEsc(contactParts.join('   |   '))}</w:t></w:r></w:p>`;
   }
 
-  // Sections
+  // Spacer after header
+  body += `<w:p><w:pPr><w:spacing w:before="0" w:after="160"/></w:pPr></w:p>`;
+
+  // ── Section blocks ────────────────────────────────────────────────────────
   for(const sec of sections){
-    // Section header: light-blue bg, left blue bar, navy bold caps text
+    // Section header: ▪ icon + bold dark text, followed by thin grey rule
     body += `<w:p><w:pPr>
-      <w:spacing w:before="240" w:after="80"/>
-      <w:shd w:val="clear" w:color="auto" w:fill="${LTBG}"/>
-      <w:pBdr>
-        <w:left w:val="single" w:sz="28" w:space="6" w:color="${BLUE}"/>
-        <w:bottom w:val="single" w:sz="2" w:space="1" w:color="C5D5EA"/>
-      </w:pBdr>
-      <w:ind w:left="180"/>
+      <w:spacing w:before="200" w:after="0"/>
     </w:pPr>
-    <w:r><w:rPr><w:b/>${FONT}<w:sz w:val="22"/><w:szCs w:val="22"/><w:color w:val="${NAVY}"/><w:caps/></w:rPr>
-    <w:t>${xmlEsc(sec.title)}</w:t></w:r></w:p>`;
+    <w:r><w:rPr><w:b/>${FONT}<w:sz w:val="22"/><w:szCs w:val="22"/><w:color w:val="${SECCOLOR}"/></w:rPr>
+    <w:t xml:space="preserve">▪  ${xmlEsc(sec.title.toUpperCase())}</w:t></w:r></w:p>`;
+
+    // Thin grey divider line under header
+    body += `<w:p><w:pPr>
+      <w:spacing w:before="0" w:after="100"/>
+      <w:pBdr><w:bottom w:val="single" w:sz="4" w:space="2" w:color="${DIVIDER}"/></w:pBdr>
+    </w:pPr></w:p>`;
 
     for(const item of sec.items){
       const rawItem = item.trim();
 
       if(/^[•\-]/.test(rawItem)){
         const txt = rawItem.replace(/^[•\-]\s*/, '');
-        body += `<w:p><w:pPr><w:ind w:left="440" w:hanging="220"/><w:spacing w:after="40"/></w:pPr>
-          <w:r><w:rPr>${FONT}<w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${DARK}"/></w:rPr>
+        body += `<w:p><w:pPr><w:ind w:left="400" w:hanging="220"/><w:spacing w:after="40"/></w:pPr>
+          <w:r><w:rPr>${FONT}<w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${CHARCOAL}"/></w:rPr>
           <w:t xml:space="preserve">•  ${xmlEsc(txt)}</w:t></w:r></w:p>`;
         continue;
       }
@@ -529,16 +528,19 @@ function buildDocXml(rawText){
       const isJobTitle = !isDate && rawItem.length < 90 && /[A-Z]/.test(rawItem[0]) && /[—–\-|,@]/.test(rawItem);
 
       if(isJobTitle){
-        body += `<w:p><w:pPr><w:spacing w:before="140" w:after="40"/></w:pPr>
-          <w:r><w:rPr><w:b/>${FONT}<w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${NAVY}"/></w:rPr>
+        // Job title / company — bold, dark blue-grey
+        body += `<w:p><w:pPr><w:spacing w:before="120" w:after="40"/></w:pPr>
+          <w:r><w:rPr><w:b/>${FONT}<w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${SECCOLOR}"/></w:rPr>
           <w:t>${xmlEsc(rawItem)}</w:t></w:r></w:p>`;
       } else if(isDate){
+        // Date / location — italic, mid grey
         body += `<w:p><w:pPr><w:spacing w:before="0" w:after="60"/></w:pPr>
-          <w:r><w:rPr>${FONT}<w:sz w:val="18"/><w:szCs w:val="18"/><w:color w:val="${MID}"/><w:i/></w:rPr>
+          <w:r><w:rPr><w:i/>${FONT}<w:sz w:val="18"/><w:szCs w:val="18"/><w:color w:val="${MID}"/></w:rPr>
           <w:t>${xmlEsc(rawItem)}</w:t></w:r></w:p>`;
       } else {
+        // Normal text — body colour
         body += `<w:p><w:pPr><w:spacing w:after="60"/></w:pPr>
-          <w:r><w:rPr>${FONT}<w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${DARK}"/></w:rPr>
+          <w:r><w:rPr>${FONT}<w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${CHARCOAL}"/></w:rPr>
           <w:t>${xmlEsc(rawItem)}</w:t></w:r></w:p>`;
       }
     }
@@ -550,7 +552,7 @@ function buildDocXml(rawText){
 <w:body>${body}
 <w:sectPr>
   <w:pgSz w:w="12240" w:h="15840"/>
-  <w:pgMar w:top="0" w:right="1080" w:bottom="1080" w:left="1080" w:header="0" w:footer="0"/>
+  <w:pgMar w:top="1080" w:right="1260" w:bottom="1080" w:left="1260" w:header="0" w:footer="0"/>
 </w:sectPr>
 </w:body>
 </w:document>`;
