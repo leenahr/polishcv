@@ -66,7 +66,7 @@
       <div id="upload-idle">
         <div style="font-size:3rem;margin-bottom:0.75rem;">📂</div>
         <p style="font-weight:500;color:#374151;margin-bottom:0.25rem;">Drop your resume here or click to browse</p>
-        <p style="font-size:0.8rem;color:#9ca3af;">PDF, DOC, DOCX · Max 10MB</p>
+        <p style="font-size:0.8rem;color:#9ca3af;">PDF · DOCX · DOC · Max 10MB</p>
       </div>
       <div id="upload-done" style="display:none;">
         <div style="font-size:3rem;margin-bottom:0.75rem;">✅</div>
@@ -288,9 +288,38 @@ async function extractPDF(file){
 }
 
 async function extractWord(file){
-  const buf=await file.arrayBuffer();
-  const result=await mammoth.extractRawText({arrayBuffer:buf});
-  return result.value.trim();
+  const ext = file.name.split('.').pop().toLowerCase();
+  const buf = await file.arrayBuffer();
+  // mammoth handles .docx well; .doc (legacy binary) is best-effort
+  try {
+    const result = await mammoth.extractRawText({arrayBuffer: buf});
+    if(result.value && result.value.trim().length > 20) return result.value.trim();
+    // If mammoth returns nearly empty for .doc, fall back to text read
+    throw new Error('empty');
+  } catch(e) {
+    if(ext === 'doc'){
+      // Legacy .doc: try reading as latin1 text and strip binary noise
+      const bytes = new Uint8Array(buf);
+      let text = '';
+      for(let i = 0; i < bytes.length; i++){
+        const c = bytes[i];
+        // Keep printable ASCII + newlines + tabs
+        if((c >= 32 && c < 127) || c === 10 || c === 13 || c === 9){
+          text += String.fromCharCode(c);
+        } else if(c === 0){
+          text += ' ';
+        }
+      }
+      // Clean up: remove long runs of spaces/symbols, keep readable chunks
+      text = text.replace(/[^\x20-\x7E\n\r\t]/g, ' ')
+                 .replace(/\s{4,}/g, '\n')
+                 .replace(/\n{3,}/g, '\n\n')
+                 .trim();
+      if(text.length > 50) return text;
+      throw new Error('Could not extract text from .doc file. Please save as .docx and try again.');
+    }
+    throw e;
+  }
 }
 
 async function startAnalysis(){
@@ -385,9 +414,9 @@ function initPayPal(){
 
 
 
-// ── DOCX Template Builder (Harvard/Consulting minimal style) ─────────────────
-// Colors: BLACK = headings/name, DARK = body text, MID = contact/dates (3 max)
-// Font: Calibri throughout. No color accents. Clean horizontal rules only.
+// ── DOCX Template Builder (Modern Professional Blue) ─────────────────────────
+// 3 colours: NAVY #1B3A6B (name bar/headers), BLUE #2E6DB4 (accent/title bar), DARK #2D2D2D (body)
+// Font: Calibri throughout. Single-column. ATS-friendly.
 
 function xmlEsc(s){
   return String(s)
@@ -397,151 +426,131 @@ function xmlEsc(s){
     .replace(/"/g,'&quot;');
 }
 
-// Normalize AI output — strip all Markdown symbols before building DOCX
 function cleanMarkdown(text){
   return text.split('\n').map(line => {
-    line = line.replace(/^#{1,6}\s+/, '');           // remove # headers
-    if(/^[-*_]{3,}\s*$/.test(line)) return '';        // remove --- dividers
-    line = line.replace(/\*\*([^*\n]+)\*\*/g, '$1'); // **bold** → plain
-    line = line.replace(/\*([^*\n]+)\*/g, '$1');      // *italic* → plain
-    line = line.replace(/__([^_\n]+)__/g, '$1');      // __bold__ → plain
-    line = line.replace(/_([^_\n]+)_/g, '$1');        // _italic_ → plain
-    line = line.replace(/`([^`\n]+)`/g, '$1');        // `code` → plain
-    line = line.replace(/^[\-\*]\s+/, '• ');          // - item → • item
-    if(/^\s*\|\s*$/.test(line)) return '';            // lone pipe → empty
-    line = line.replace(/^\s*\|\s*/, '').replace(/\s*\|\s*$/, ''); // strip edge pipes
+    line = line.replace(/^#{1,6}\s+/, '');
+    if(/^[-*_]{3,}\s*$/.test(line)) return '';
+    line = line.replace(/\*\*([^*\n]+)\*\*/g, '$1');
+    line = line.replace(/\*([^*\n]+)\*/g, '$1');
+    line = line.replace(/__([^_\n]+)__/g, '$1');
+    line = line.replace(/_([^_\n]+)_/g, '$1');
+    line = line.replace(/`([^`\n]+)`/g, '$1');
+    line = line.replace(/^[\-\*]\s+/, '• ');
+    if(/^\s*\|\s*$/.test(line)) return '';
+    line = line.replace(/^\s*\|\s*/, '').replace(/\s*\|\s*$/, '');
     return line;
   }).join('\n');
-}
-
-// Helper: make a paragraph element string
-function para(content, pPr='', rPr=''){
-  return `<w:p>${pPr?`<w:pPr>${pPr}</w:pPr>`:''}${content?`<w:r>${rPr?`<w:rPr>${rPr}</w:rPr>`:''}${content}</w:r>`:''}</w:p>`;
 }
 
 function buildDocXml(rawText){
   const text = cleanMarkdown(rawText);
 
-  // ── Colour palette (max 3 colours) ────────────────────────────────────────
-  const BLACK = '111111';   // name + section headers
-  const DARK  = '222222';   // body text, job titles, bullet points
-  const MID   = '555555';   // contact line, dates, secondary info
-  const RULE  = '999999';   // thin horizontal rule under section headers
+  const NAVY  = '1B3A6B';
+  const BLUE  = '2E6DB4';
+  const LTBG  = 'EBF0F8';
+  const DARK  = '2D2D2D';
+  const MID   = '5A6A7A';
+  const WHITE = 'FFFFFF';
+  const FONT  = `<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>`;
 
-  // ── Font shortcuts ─────────────────────────────────────────────────────────
-  const FONT = `<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>`;
-
-  // ── Detect section headers ─────────────────────────────────────────────────
   const SEC = /^(PROFESSIONAL\s+SUMMARY|SUMMARY|OBJECTIVE|WORK\s+EXPERIENCE|EXPERIENCE|EDUCATION|SKILLS|CORE\s+COMPETENCIES|COMPETENCIES|PROJECTS|CERTIF|AWARDS|LANGUAGES?|VOLUNTEER|PUBLICATIONS|REFERENCES)/i;
 
   const lines = text.split('\n').map(l => l.trim()).filter(l => l);
-
-  // Parse: header block (name/title/contact) + sections
   let headerLines = [], sections = [], cur = null, headerDone = false;
   for(const line of lines){
-    if(!headerDone && !SEC.test(line)){
-      headerLines.push(line);
-    } else {
+    if(!headerDone && !SEC.test(line)){ headerLines.push(line); }
+    else {
       headerDone = true;
-      if(SEC.test(line)){
-        if(cur) sections.push(cur);
-        cur = { title: line, items: [] };
-      } else if(cur){
-        cur.items.push(line);
-      }
+      if(SEC.test(line)){ if(cur) sections.push(cur); cur = {title:line, items:[]}; }
+      else if(cur){ cur.items.push(line); }
     }
   }
   if(cur) sections.push(cur);
 
   let body = '';
 
-  // ── Header block ──────────────────────────────────────────────────────────
-  // Line 0: Full Name — centred, 22pt, bold, black
+  // Name bar — navy fill, white bold text, centred
   if(headerLines[0]){
-    body += `<w:p>
-      <w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="60"/></w:pPr>
-      <w:r><w:rPr><w:b/>${FONT}<w:sz w:val="44"/><w:szCs w:val="44"/><w:color w:val="${BLACK}"/></w:rPr>
-      <w:t>${xmlEsc(headerLines[0])}</w:t></w:r></w:p>`;
-  }
-  // Line 1: Professional title — centred, 11pt, not bold, dark grey
-  if(headerLines[1]){
-    body += `<w:p>
-      <w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="60"/></w:pPr>
-      <w:r><w:rPr>${FONT}<w:sz w:val="22"/><w:szCs w:val="22"/><w:color w:val="${MID}"/></w:rPr>
-      <w:t>${xmlEsc(headerLines[1])}</w:t></w:r></w:p>`;
-  }
-  // Remaining header lines: contact info — centred, 10pt, mid-grey, joined with  |
-  const contactParts = headerLines.slice(2).filter(l => l);
-  if(contactParts.length){
-    const contactText = contactParts.join('   |   ');
-    body += `<w:p>
-      <w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="200"/></w:pPr>
-      <w:r><w:rPr>${FONT}<w:sz w:val="19"/><w:szCs w:val="19"/><w:color w:val="${MID}"/></w:rPr>
-      <w:t>${xmlEsc(contactText)}</w:t></w:r></w:p>`;
+    body += `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="120" w:after="0"/>
+      <w:shd w:val="clear" w:color="auto" w:fill="${NAVY}"/>
+      <w:pBdr><w:top w:val="single" w:sz="4" w:space="0" w:color="${NAVY}"/></w:pBdr>
+    </w:pPr>
+    <w:r><w:rPr><w:b/>${FONT}<w:sz w:val="48"/><w:szCs w:val="48"/><w:color w:val="${WHITE}"/><w:spacing w:val="60"/></w:rPr>
+    <w:t xml:space="preserve">  ${xmlEsc(headerLines[0])}  </w:t></w:r></w:p>`;
   }
 
-  // ── Section blocks ────────────────────────────────────────────────────────
+  // Title bar — blue fill, white text
+  if(headerLines[1]){
+    body += `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="0"/>
+      <w:shd w:val="clear" w:color="auto" w:fill="${BLUE}"/>
+    </w:pPr>
+    <w:r><w:rPr>${FONT}<w:sz w:val="22"/><w:szCs w:val="22"/><w:color w:val="${WHITE}"/></w:rPr>
+    <w:t xml:space="preserve">  ${xmlEsc(headerLines[1])}  </w:t></w:r></w:p>`;
+  }
+
+  // Contact bar — light blue fill, navy text
+  const contactParts = headerLines.slice(2).filter(l => l);
+  if(contactParts.length){
+    body += `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="280"/>
+      <w:shd w:val="clear" w:color="auto" w:fill="${LTBG}"/>
+      <w:pBdr><w:bottom w:val="single" w:sz="6" w:space="2" w:color="${BLUE}"/></w:pBdr>
+    </w:pPr>
+    <w:r><w:rPr>${FONT}<w:sz w:val="18"/><w:szCs w:val="18"/><w:color w:val="${NAVY}"/></w:rPr>
+    <w:t xml:space="preserve">  ${xmlEsc(contactParts.join('   |   '))}  </w:t></w:r></w:p>`;
+  }
+
+  // Sections
   for(const sec of sections){
-    // Section header: ALL CAPS, 10.5pt, bold, black, thin bottom border rule
-    body += `<w:p>
-      <w:pPr>
-        <w:spacing w:before="240" w:after="80"/>
-        <w:pBdr><w:bottom w:val="single" w:sz="4" w:space="4" w:color="${RULE}"/></w:pBdr>
-      </w:pPr>
-      <w:r><w:rPr><w:b/>${FONT}<w:sz w:val="21"/><w:szCs w:val="21"/><w:color w:val="${BLACK}"/><w:caps/></w:rPr>
-      <w:t>${xmlEsc(sec.title)}</w:t></w:r></w:p>`;
+    // Section header: light-blue bg, left blue bar, navy bold caps text
+    body += `<w:p><w:pPr>
+      <w:spacing w:before="240" w:after="80"/>
+      <w:shd w:val="clear" w:color="auto" w:fill="${LTBG}"/>
+      <w:pBdr>
+        <w:left w:val="single" w:sz="28" w:space="6" w:color="${BLUE}"/>
+        <w:bottom w:val="single" w:sz="2" w:space="1" w:color="C5D5EA"/>
+      </w:pBdr>
+      <w:ind w:left="180"/>
+    </w:pPr>
+    <w:r><w:rPr><w:b/>${FONT}<w:sz w:val="22"/><w:szCs w:val="22"/><w:color w:val="${NAVY}"/><w:caps/></w:rPr>
+    <w:t>${xmlEsc(sec.title)}</w:t></w:r></w:p>`;
 
     for(const item of sec.items){
       const rawItem = item.trim();
 
-      // Bullet point lines
       if(/^[•\-]/.test(rawItem)){
         const txt = rawItem.replace(/^[•\-]\s*/, '');
-        body += `<w:p>
-          <w:pPr><w:ind w:left="320" w:hanging="200"/><w:spacing w:after="40"/></w:pPr>
+        body += `<w:p><w:pPr><w:ind w:left="440" w:hanging="220"/><w:spacing w:after="40"/></w:pPr>
           <w:r><w:rPr>${FONT}<w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${DARK}"/></w:rPr>
           <w:t xml:space="preserve">•  ${xmlEsc(txt)}</w:t></w:r></w:p>`;
         continue;
       }
 
-      // Date/location lines — short, looks like "Jan 2020 – Present" or "New York, NY"
-      const isDateOrLocation = /\d{4}|Present|Remote|Hybrid/i.test(rawItem) && rawItem.length < 60;
+      const isDate = /\d{4}|Present|Remote|Hybrid/i.test(rawItem) && rawItem.length < 60;
+      const isJobTitle = !isDate && rawItem.length < 90 && /[A-Z]/.test(rawItem[0]) && /[—–\-|,@]/.test(rawItem);
 
-      // Job title / company lines — medium length, contains capital words, no bullets
-      const isJobTitle = !isDateOrLocation && rawItem.length < 80 && /[A-Z]/.test(rawItem[0]) && !/^[a-z]/.test(rawItem);
-
-      if(isJobTitle && /—|–|-|@|,/.test(rawItem)){
-        // Company — Title or Title | Company line
-        body += `<w:p>
-          <w:pPr><w:spacing w:before="120" w:after="40"/></w:pPr>
-          <w:r><w:rPr><w:b/>${FONT}<w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${DARK}"/></w:rPr>
+      if(isJobTitle){
+        body += `<w:p><w:pPr><w:spacing w:before="140" w:after="40"/></w:pPr>
+          <w:r><w:rPr><w:b/>${FONT}<w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${NAVY}"/></w:rPr>
           <w:t>${xmlEsc(rawItem)}</w:t></w:r></w:p>`;
-      } else if(isDateOrLocation){
-        // Date/location line — mid-grey, smaller
-        body += `<w:p>
-          <w:pPr><w:spacing w:before="0" w:after="60"/></w:pPr>
+      } else if(isDate){
+        body += `<w:p><w:pPr><w:spacing w:before="0" w:after="60"/></w:pPr>
           <w:r><w:rPr>${FONT}<w:sz w:val="18"/><w:szCs w:val="18"/><w:color w:val="${MID}"/><w:i/></w:rPr>
           <w:t>${xmlEsc(rawItem)}</w:t></w:r></w:p>`;
       } else {
-        // Normal paragraph text (summary, descriptions, skill lists)
-        body += `<w:p>
-          <w:pPr><w:spacing w:after="60"/></w:pPr>
+        body += `<w:p><w:pPr><w:spacing w:after="60"/></w:pPr>
           <w:r><w:rPr>${FONT}<w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${DARK}"/></w:rPr>
           <w:t>${xmlEsc(rawItem)}</w:t></w:r></w:p>`;
       }
     }
   }
 
-  // ── Document wrapper with US Letter page size and standard margins ─────────
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
             xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-<w:body>
-${body}
+<w:body>${body}
 <w:sectPr>
   <w:pgSz w:w="12240" w:h="15840"/>
-  <w:pgMar w:top="1080" w:right="1260" w:bottom="1080" w:left="1260" w:header="0" w:footer="0"/>
-  <w:cols w:space="720"/>
+  <w:pgMar w:top="0" w:right="1080" w:bottom="1080" w:left="1080" w:header="0" w:footer="0"/>
 </w:sectPr>
 </w:body>
 </w:document>`;
