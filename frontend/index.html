@@ -385,76 +385,166 @@ function initPayPal(){
 
 
 
-// ── DOCX Template Builder ────────────────────────────────────────────────────
-function xmlEsc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+// ── DOCX Template Builder (Harvard/Consulting minimal style) ─────────────────
+// Colors: BLACK = headings/name, DARK = body text, MID = contact/dates (3 max)
+// Font: Calibri throughout. No color accents. Clean horizontal rules only.
 
-// Strip Markdown syntax and normalize text for DOCX building
+function xmlEsc(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+// Normalize AI output — strip all Markdown symbols before building DOCX
 function cleanMarkdown(text){
-  return text
-    .split('\n')
-    .map(line => {
-      // Convert ## Section Header → keep as is (will be detected by SEC regex)
-      // but strip the leading # symbols
-      line = line.replace(/^#{1,6}\s+/, '');
-      // Convert --- or *** (hr) lines to empty (they'll be filtered)
-      if(/^[-*_]{3,}\s*$/.test(line)) return '';
-      // Strip bold/italic markers: **text** or *text* or __text__
-      line = line.replace(/\*\*([^*]+)\*\*/g, '$1');
-      line = line.replace(/\*([^*]+)\*/g, '$1');
-      line = line.replace(/__([^_]+)__/g, '$1');
-      line = line.replace(/_([^_]+)_/g, '$1');
-      // Convert markdown bullets "- item" or "* item" to "• item"
-      line = line.replace(/^[\-\*]\s+/, '• ');
-      // Strip any remaining pipe characters used as separators
-      // but keep lines with meaningful content either side
-      if(/^\s*\|\s*$/.test(line)) return '';
-      // Strip leading/trailing pipes if it looks like a table separator
-      line = line.replace(/^\s*\|\s*/, '').replace(/\s*\|\s*$/, '');
-      return line;
-    })
-    .join('\n');
+  return text.split('\n').map(line => {
+    line = line.replace(/^#{1,6}\s+/, '');           // remove # headers
+    if(/^[-*_]{3,}\s*$/.test(line)) return '';        // remove --- dividers
+    line = line.replace(/\*\*([^*\n]+)\*\*/g, '$1'); // **bold** → plain
+    line = line.replace(/\*([^*\n]+)\*/g, '$1');      // *italic* → plain
+    line = line.replace(/__([^_\n]+)__/g, '$1');      // __bold__ → plain
+    line = line.replace(/_([^_\n]+)_/g, '$1');        // _italic_ → plain
+    line = line.replace(/`([^`\n]+)`/g, '$1');        // `code` → plain
+    line = line.replace(/^[\-\*]\s+/, '• ');          // - item → • item
+    if(/^\s*\|\s*$/.test(line)) return '';            // lone pipe → empty
+    line = line.replace(/^\s*\|\s*/, '').replace(/\s*\|\s*$/, ''); // strip edge pipes
+    return line;
+  }).join('\n');
+}
+
+// Helper: make a paragraph element string
+function para(content, pPr='', rPr=''){
+  return `<w:p>${pPr?`<w:pPr>${pPr}</w:pPr>`:''}${content?`<w:r>${rPr?`<w:rPr>${rPr}</w:rPr>`:''}${content}</w:r>`:''}</w:p>`;
 }
 
 function buildDocXml(rawText){
   const text = cleanMarkdown(rawText);
-  const NAVY='1a1a2e', BLUE='2563eb', BODY='374151', LIGHT='6b7280';
-  const lines=text.split('\n').map(l=>l.trim()).filter(l=>l);
-  const SEC=/^(SUMMARY|OBJECTIVE|EXPERIENCE|WORK|EDUCATION|SKILLS|PROJECTS|CERTIF|AWARDS|LANGUAGE|VOLUNTEER|PUBLICATIONS|REFERENCES)/i;
-  let headerLines=[], sections=[], cur=null, headerDone=false;
+
+  // ── Colour palette (max 3 colours) ────────────────────────────────────────
+  const BLACK = '111111';   // name + section headers
+  const DARK  = '222222';   // body text, job titles, bullet points
+  const MID   = '555555';   // contact line, dates, secondary info
+  const RULE  = '999999';   // thin horizontal rule under section headers
+
+  // ── Font shortcuts ─────────────────────────────────────────────────────────
+  const FONT = `<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>`;
+
+  // ── Detect section headers ─────────────────────────────────────────────────
+  const SEC = /^(PROFESSIONAL\s+SUMMARY|SUMMARY|OBJECTIVE|WORK\s+EXPERIENCE|EXPERIENCE|EDUCATION|SKILLS|CORE\s+COMPETENCIES|COMPETENCIES|PROJECTS|CERTIF|AWARDS|LANGUAGES?|VOLUNTEER|PUBLICATIONS|REFERENCES)/i;
+
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+
+  // Parse: header block (name/title/contact) + sections
+  let headerLines = [], sections = [], cur = null, headerDone = false;
   for(const line of lines){
-    if(!headerDone&&!SEC.test(line)){headerLines.push(line);}
-    else{
-      headerDone=true;
-      if(SEC.test(line)){if(cur)sections.push(cur);cur={title:line,items:[]};}
-      else if(cur){cur.items.push(line);}
-    }
-  }
-  if(cur)sections.push(cur);
-  let body='';
-  // Name
-  if(headerLines[0]) body+=`<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="52"/><w:szCs w:val="52"/><w:color w:val="${NAVY}"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/></w:rPr><w:t>${xmlEsc(headerLines[0])}</w:t></w:r></w:p>`;
-  // Title
-  if(headerLines[1]) body+=`<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:sz w:val="26"/><w:szCs w:val="26"/><w:color w:val="${BLUE}"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/></w:rPr><w:t>${xmlEsc(headerLines[1])}</w:t></w:r></w:p>`;
-  // Contact
-  const contact=headerLines.slice(2).join('  |  ');
-  if(contact) body+=`<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="120"/></w:pPr><w:r><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/><w:color w:val="${LIGHT}"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/></w:rPr><w:t>${xmlEsc(contact)}</w:t></w:r></w:p>`;
-  // Sections
-  for(const sec of sections){
-    body+=`<w:p><w:pPr><w:spacing w:before="200" w:after="60"/><w:pBdr><w:bottom w:val="single" w:sz="8" w:space="4" w:color="${BLUE}"/></w:pBdr></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="22"/><w:szCs w:val="22"/><w:color w:val="${NAVY}"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:caps/></w:rPr><w:t>${xmlEsc(sec.title)}</w:t></w:r></w:p>`;
-    for(const item of sec.items){
-      const isBullet=/^[•\-*]/.test(item);
-      const isTitle=!isBullet&&/[A-Z]{2,}/.test(item)&&item.length<70&&/\d{4}|@|\.com/.test(item)===false;
-      const txt=isBullet?item.replace(/^[•\-*]\s*/,''):item;
-      if(isBullet){
-        body+=`<w:p><w:pPr><w:ind w:left="360" w:hanging="220"/><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${BODY}"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/></w:rPr><w:t xml:space="preserve">• ${xmlEsc(txt)}</w:t></w:r></w:p>`;
-      } else if(isTitle){
-        body+=`<w:p><w:pPr><w:spacing w:before="100" w:after="40"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="21"/><w:szCs w:val="21"/><w:color w:val="${NAVY}"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/></w:rPr><w:t>${xmlEsc(item)}</w:t></w:r></w:p>`;
-      } else {
-        body+=`<w:p><w:pPr><w:spacing w:after="40"/></w:pPr><w:r><w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${BODY}"/><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/></w:rPr><w:t>${xmlEsc(item)}</w:t></w:r></w:p>`;
+    if(!headerDone && !SEC.test(line)){
+      headerLines.push(line);
+    } else {
+      headerDone = true;
+      if(SEC.test(line)){
+        if(cur) sections.push(cur);
+        cur = { title: line, items: [] };
+      } else if(cur){
+        cur.items.push(line);
       }
     }
   }
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080"/></w:sectPr></w:body></w:document>`;
+  if(cur) sections.push(cur);
+
+  let body = '';
+
+  // ── Header block ──────────────────────────────────────────────────────────
+  // Line 0: Full Name — centred, 22pt, bold, black
+  if(headerLines[0]){
+    body += `<w:p>
+      <w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="60"/></w:pPr>
+      <w:r><w:rPr><w:b/>${FONT}<w:sz w:val="44"/><w:szCs w:val="44"/><w:color w:val="${BLACK}"/></w:rPr>
+      <w:t>${xmlEsc(headerLines[0])}</w:t></w:r></w:p>`;
+  }
+  // Line 1: Professional title — centred, 11pt, not bold, dark grey
+  if(headerLines[1]){
+    body += `<w:p>
+      <w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="60"/></w:pPr>
+      <w:r><w:rPr>${FONT}<w:sz w:val="22"/><w:szCs w:val="22"/><w:color w:val="${MID}"/></w:rPr>
+      <w:t>${xmlEsc(headerLines[1])}</w:t></w:r></w:p>`;
+  }
+  // Remaining header lines: contact info — centred, 10pt, mid-grey, joined with  |
+  const contactParts = headerLines.slice(2).filter(l => l);
+  if(contactParts.length){
+    const contactText = contactParts.join('   |   ');
+    body += `<w:p>
+      <w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="200"/></w:pPr>
+      <w:r><w:rPr>${FONT}<w:sz w:val="19"/><w:szCs w:val="19"/><w:color w:val="${MID}"/></w:rPr>
+      <w:t>${xmlEsc(contactText)}</w:t></w:r></w:p>`;
+  }
+
+  // ── Section blocks ────────────────────────────────────────────────────────
+  for(const sec of sections){
+    // Section header: ALL CAPS, 10.5pt, bold, black, thin bottom border rule
+    body += `<w:p>
+      <w:pPr>
+        <w:spacing w:before="240" w:after="80"/>
+        <w:pBdr><w:bottom w:val="single" w:sz="4" w:space="4" w:color="${RULE}"/></w:pBdr>
+      </w:pPr>
+      <w:r><w:rPr><w:b/>${FONT}<w:sz w:val="21"/><w:szCs w:val="21"/><w:color w:val="${BLACK}"/><w:caps/></w:rPr>
+      <w:t>${xmlEsc(sec.title)}</w:t></w:r></w:p>`;
+
+    for(const item of sec.items){
+      const rawItem = item.trim();
+
+      // Bullet point lines
+      if(/^[•\-]/.test(rawItem)){
+        const txt = rawItem.replace(/^[•\-]\s*/, '');
+        body += `<w:p>
+          <w:pPr><w:ind w:left="320" w:hanging="200"/><w:spacing w:after="40"/></w:pPr>
+          <w:r><w:rPr>${FONT}<w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${DARK}"/></w:rPr>
+          <w:t xml:space="preserve">•  ${xmlEsc(txt)}</w:t></w:r></w:p>`;
+        continue;
+      }
+
+      // Date/location lines — short, looks like "Jan 2020 – Present" or "New York, NY"
+      const isDateOrLocation = /\d{4}|Present|Remote|Hybrid/i.test(rawItem) && rawItem.length < 60;
+
+      // Job title / company lines — medium length, contains capital words, no bullets
+      const isJobTitle = !isDateOrLocation && rawItem.length < 80 && /[A-Z]/.test(rawItem[0]) && !/^[a-z]/.test(rawItem);
+
+      if(isJobTitle && /—|–|-|@|,/.test(rawItem)){
+        // Company — Title or Title | Company line
+        body += `<w:p>
+          <w:pPr><w:spacing w:before="120" w:after="40"/></w:pPr>
+          <w:r><w:rPr><w:b/>${FONT}<w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${DARK}"/></w:rPr>
+          <w:t>${xmlEsc(rawItem)}</w:t></w:r></w:p>`;
+      } else if(isDateOrLocation){
+        // Date/location line — mid-grey, smaller
+        body += `<w:p>
+          <w:pPr><w:spacing w:before="0" w:after="60"/></w:pPr>
+          <w:r><w:rPr>${FONT}<w:sz w:val="18"/><w:szCs w:val="18"/><w:color w:val="${MID}"/><w:i/></w:rPr>
+          <w:t>${xmlEsc(rawItem)}</w:t></w:r></w:p>`;
+      } else {
+        // Normal paragraph text (summary, descriptions, skill lists)
+        body += `<w:p>
+          <w:pPr><w:spacing w:after="60"/></w:pPr>
+          <w:r><w:rPr>${FONT}<w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="${DARK}"/></w:rPr>
+          <w:t>${xmlEsc(rawItem)}</w:t></w:r></w:p>`;
+      }
+    }
+  }
+
+  // ── Document wrapper with US Letter page size and standard margins ─────────
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+            xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<w:body>
+${body}
+<w:sectPr>
+  <w:pgSz w:w="12240" w:h="15840"/>
+  <w:pgMar w:top="1080" w:right="1260" w:bottom="1080" w:left="1260" w:header="0" w:footer="0"/>
+  <w:cols w:space="720"/>
+</w:sectPr>
+</w:body>
+</w:document>`;
 }
 
 async function downloadResume(){
