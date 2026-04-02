@@ -191,19 +191,15 @@
         </div>
       </div>
 
-      <div style="position:relative;border:1px solid #f3f4f6;border-radius:0.75rem;overflow:hidden;background:#fafafa;">
-        <!-- Clear preview: first 4 lines -->
-        <div id="resume-preview-clear" style="padding:1.5rem 1.5rem 0;font-size:0.85rem;color:#374151;line-height:1.8;white-space:pre-wrap;font-family:Georgia,serif;"></div>
-        <!-- Blurred rest -->
-        <div style="position:relative;">
-          <div id="resume-preview-blur" style="padding:0 1.5rem 1.5rem;font-size:0.85rem;color:#374151;line-height:1.8;white-space:pre-wrap;font-family:Georgia,serif;filter:blur(4px);user-select:none;max-height:12rem;overflow:hidden;"></div>
-          <!-- Gradient fade + lock overlay -->
-          <div style="position:absolute;inset:0;background:linear-gradient(to bottom, rgba(250,250,250,0) 0%, rgba(250,250,250,0.6) 40%, rgba(250,250,250,0.97) 75%);"></div>
-          <div style="position:absolute;bottom:0;left:0;right:0;padding:1.5rem;text-align:center;">
-            <div style="display:inline-flex;align-items:center;gap:0.5rem;background:white;border:1.5px solid #e5e7eb;border-radius:9999px;padding:0.5rem 1.25rem;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-              <span style="font-size:1rem;">🔒</span>
-              <span style="font-size:0.85rem;font-weight:600;color:#374151;">Full resume unlocks after payment</span>
-            </div>
+      <div style="position:relative;border:1px solid #e5e7eb;border-radius:0.75rem;overflow:hidden;background:white;box-shadow:0 2px 12px rgba(0,0,0,0.06);">
+        <!-- HTML live preview — rendered like real resume -->
+        <div id="resume-preview-html" style="padding:0;"></div>
+        <!-- Blur overlay on bottom half -->
+        <div style="position:absolute;bottom:0;left:0;right:0;height:55%;background:linear-gradient(to bottom,transparent 0%,rgba(255,255,255,0.7) 30%,rgba(255,255,255,0.97) 70%);pointer-events:none;"></div>
+        <div style="position:absolute;bottom:0;left:0;right:0;padding:1.5rem;text-align:center;">
+          <div style="display:inline-flex;align-items:center;gap:0.5rem;background:white;border:1.5px solid #e5e7eb;border-radius:9999px;padding:0.5rem 1.25rem;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+            <span style="font-size:1rem;">🔒</span>
+            <span style="font-size:0.85rem;font-weight:600;color:#374151;">Full resume unlocks after payment</span>
           </div>
         </div>
       </div>
@@ -398,12 +394,7 @@ async function startRewrite(){
     const data=await res.json();
     if(!data.success)throw new Error(data.error||'Rewrite failed');
     state.rewrittenResume=data.rewrittenResume;
-    // Split into preview (first 3 lines clear) + rest (blurred)
-    const lines = data.rewrittenResume.split('\n');
-    const clearLines = lines.slice(0, 4).join('\n');
-    const blurLines = lines.slice(4).join('\n');
-    document.getElementById('resume-preview-clear').textContent = clearLines;
-    document.getElementById('resume-preview-blur').textContent = blurLines;
+    renderHtmlPreview(data.rewrittenResume, currentTemplate);
     showSection('preview');setStep(3);
     initPayPal();
   }catch(e){alert('Rewrite failed: '+e.message);showSection('results');setStep(2);}
@@ -414,7 +405,6 @@ let currentTemplate = 'classic';
 
 function selectTemplate(tpl){
   currentTemplate = tpl;
-  // Update button styles
   ['classic','bold','modern'].forEach(t => {
     const btn = document.getElementById('tpl-'+t);
     if(t === tpl){
@@ -427,22 +417,104 @@ function selectTemplate(tpl){
       btn.style.color = '#374151';
     }
   });
-  // Update preview text style to hint at the template
-  const clearEl = document.getElementById('resume-preview-clear');
-  const blurEl  = document.getElementById('resume-preview-blur');
-  if(tpl === 'classic'){
-    clearEl.style.fontFamily = 'Georgia, serif';
-    clearEl.style.color = '#1B3A6B';
-    blurEl.style.fontFamily  = 'Georgia, serif';
-  } else if(tpl === 'bold'){
-    clearEl.style.fontFamily = 'Arial, sans-serif';
-    clearEl.style.color = '#1e40af';
-    blurEl.style.fontFamily  = 'Arial, sans-serif';
-  } else {
-    clearEl.style.fontFamily = 'Helvetica, sans-serif';
-    clearEl.style.color = '#0f766e';
-    blurEl.style.fontFamily  = 'Helvetica, sans-serif';
+  if(state.rewrittenResume) renderHtmlPreview(state.rewrittenResume, tpl);
+}
+
+// ── HTML live preview renderer ─────────────────────────────────────────────
+function renderHtmlPreview(rawText, tpl){
+  const text = cleanMarkdown(rawText);
+  const SEC = /^(PROFESSIONAL\s+SUMMARY|SUMMARY|OBJECTIVE|WORK\s+EXPERIENCE|EXPERIENCE|EDUCATION|SKILLS|CORE\s+COMPETENCIES|COMPETENCIES|PROJECTS|CERTIF|AWARDS|LANGUAGES?|VOLUNTEER|PUBLICATIONS|REFERENCES)/i;
+  const lines = text.split('\n').map(l=>l.trim()).filter(l=>l);
+  let headerLines=[], sections=[], cur=null, headerDone=false;
+  for(const line of lines){
+    if(!headerDone && !SEC.test(line)){ headerLines.push(line); }
+    else { headerDone=true; if(SEC.test(line)){if(cur)sections.push(cur);cur={title:line,items:[]};} else if(cur){cur.items.push(line);} }
   }
+  if(cur) sections.push(cur);
+
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  let html = '';
+
+  if(tpl === 'bold'){
+    // ── Corporate Blue preview ──────────────────────────────────────────
+    html += `<div style="font-family:Calibri,Arial,sans-serif;">`;
+    html += `<div style="background:#1e3a5f;padding:1.25rem 1.5rem 0.75rem;text-align:center;">
+      <div style="font-size:1.6rem;font-weight:700;color:white;letter-spacing:2px;">${esc(headerLines[0]||'')}</div></div>`;
+    if(headerLines[1]) html += `<div style="background:#1e40af;padding:0.4rem 1.5rem;text-align:center;font-size:0.85rem;color:white;">${esc(headerLines[1])}</div>`;
+    const cp = headerLines.slice(2).filter(l=>l);
+    if(cp.length) html += `<div style="background:#dbeafe;padding:0.4rem 1.5rem;text-align:center;font-size:0.75rem;color:#1e3a5f;border-bottom:2px solid #1e40af;">${esc(cp.join('  |  '))}</div>`;
+    html += `<div style="padding:0 1.5rem 1rem;">`;
+    for(const sec of sections){
+      html += `<div style="margin-top:0.9rem;"><div style="font-weight:700;font-size:0.85rem;color:#1e40af;text-transform:uppercase;letter-spacing:1px;padding-bottom:3px;border-bottom:2px solid #1e40af;">${esc(sec.title)}</div>`;
+      for(const item of sec.items){
+        const r=item.trim();
+        if(/^[•\-]/.test(r)){html+=`<div style="font-size:0.78rem;color:#1f2937;margin:3px 0 3px 1rem;">• ${esc(r.replace(/^[•\-]\s*/,''))}</div>`;continue;}
+        const isDate=/\d{4}|Present/i.test(r)&&r.length<60;
+        const isJob=!isDate&&r.length<90&&/[—–\-|,@]/.test(r);
+        if(isJob) html+=`<div style="font-size:0.8rem;font-weight:700;color:#1e3a5f;margin-top:6px;">${esc(r)}</div>`;
+        else if(isDate) html+=`<div style="font-size:0.72rem;color:#6b7280;font-style:italic;">${esc(r)}</div>`;
+        else html+=`<div style="font-size:0.78rem;color:#374151;margin:3px 0;">${esc(r)}</div>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div></div>`;
+
+  } else if(tpl === 'modern'){
+    // ── Modern Teal preview ─────────────────────────────────────────────
+    html += `<div style="font-family:Calibri,Arial,sans-serif;padding:1.25rem 1.5rem;">`;
+    html += `<div style="border-left:4px solid #0f766e;padding-left:0.875rem;margin-bottom:0.625rem;">
+      <div style="font-size:1.6rem;font-weight:700;color:#0f766e;letter-spacing:1px;">${esc(headerLines[0]||'')}</div>`;
+    if(headerLines[1]) html += `<div style="font-size:0.85rem;color:#6b7280;margin-top:2px;">${esc(headerLines[1])}</div>`;
+    const cp=headerLines.slice(2).filter(l=>l);
+    if(cp.length) html+=`<div style="font-size:0.75rem;color:#6b7280;margin-top:4px;padding-top:4px;border-top:1px solid #d1fae5;">${esc(cp.join('  |  '))}</div>`;
+    html += `</div>`;
+    for(const sec of sections){
+      html += `<div style="margin-top:0.875rem;"><div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:4px;">
+        <div style="width:3px;height:14px;background:#0f766e;border-radius:2px;flex-shrink:0;"></div>
+        <div style="font-weight:700;font-size:0.82rem;color:#0f766e;text-transform:uppercase;letter-spacing:0.5px;">${esc(sec.title)}</div>
+      </div><div style="height:1px;background:#d1fae5;margin-bottom:6px;"></div>`;
+      for(const item of sec.items){
+        const r=item.trim();
+        if(/^[•\-]/.test(r)){html+=`<div style="font-size:0.78rem;color:#1f2937;margin:3px 0 3px 1rem;">• ${esc(r.replace(/^[•\-]\s*/,''))}</div>`;continue;}
+        const isDate=/\d{4}|Present/i.test(r)&&r.length<60;
+        const isJob=!isDate&&r.length<90&&/[—–\-|,@]/.test(r);
+        if(isJob) html+=`<div style="font-size:0.8rem;font-weight:700;color:#134e4a;margin-top:6px;">${esc(r)}</div>`;
+        else if(isDate) html+=`<div style="font-size:0.72rem;color:#6b7280;font-style:italic;">${esc(r)}</div>`;
+        else html+=`<div style="font-size:0.78rem;color:#374151;margin:3px 0;">${esc(r)}</div>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div>`;
+
+  } else {
+    // ── Classic Clean preview ───────────────────────────────────────────
+    html += `<div style="font-family:Calibri,Georgia,serif;padding:1.25rem 1.5rem;">`;
+    html += `<div style="margin-bottom:0.5rem;">
+      <div style="font-size:1.6rem;font-weight:700;color:#1B3A6B;letter-spacing:1px;">${esc(headerLines[0]||'')}</div>`;
+    if(headerLines[1]) html+=`<div style="font-size:0.85rem;color:#707070;margin-top:2px;">${esc(headerLines[1])}</div>`;
+    const cp=headerLines.slice(2).filter(l=>l);
+    if(cp.length) html+=`<div style="font-size:0.75rem;color:#707070;margin-top:4px;padding-bottom:6px;border-bottom:1px solid #e5e7eb;">${esc(cp.join('  |  '))}</div>`;
+    html += `</div>`;
+    for(const sec of sections){
+      html += `<div style="margin-top:0.875rem;">
+        <div style="font-weight:700;font-size:0.82rem;color:#2D3E50;text-transform:uppercase;letter-spacing:0.5px;">▪ ${esc(sec.title)}</div>
+        <div style="height:1px;background:#e5e7eb;margin:4px 0 6px;"></div>`;
+      for(const item of sec.items){
+        const r=item.trim();
+        if(/^[•\-]/.test(r)){html+=`<div style="font-size:0.78rem;color:#2D2D2D;margin:3px 0 3px 1rem;">• ${esc(r.replace(/^[•\-]\s*/,''))}</div>`;continue;}
+        const isDate=/\d{4}|Present/i.test(r)&&r.length<60;
+        const isJob=!isDate&&r.length<90&&/[—–\-|,@]/.test(r);
+        if(isJob) html+=`<div style="font-size:0.8rem;font-weight:700;color:#2D3E50;margin-top:6px;">${esc(r)}</div>`;
+        else if(isDate) html+=`<div style="font-size:0.72rem;color:#707070;font-style:italic;">${esc(r)}</div>`;
+        else html+=`<div style="font-size:0.78rem;color:#2D2D2D;margin:3px 0;">${esc(r)}</div>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+
+  document.getElementById('resume-preview-html').innerHTML = html;
 }
 
 function initPayPal(){  document.getElementById('paypal-button-container').innerHTML='';
